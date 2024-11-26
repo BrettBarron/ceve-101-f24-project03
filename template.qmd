@@ -1,9 +1,9 @@
 ---
 title: "CEVE 101: Project 03"
-author: "Brett Barron bmb16" # CHANGE THIS
-date: "2024-10-23"
+author: "Brett Barron bmb16"
+date: "2024-11-25"
 
-# do not change anything below this line
+
 engine: julia
 code-annotations: hover
 format:
@@ -11,100 +11,39 @@ format:
     docx: default
 ---
 
-We begin by loading the required packages.
-
 ```{julia}
 using Revise                      # <1>
 using RainwaterHarvesting         # <2>
 ```
 
-1. `Revise` allows us to update code without restarting Julia.
-2. We load the `RainwaterHarvesting` package that contains our simulation tools.
-
-### Setting the file path
-
-Next, we specify the path to the rainfall data file and read it in.
-
 ```{julia}
-filepath = "data/1.txt" # <1>   
+filepath = "data/5.txt" # <1>   
 rainfall_data = RainfallData(filepath) # <2>
 ```
 
-1. This is the path to the rainfall data file for the station of interest.
-2. This creates a `RainfallData` object containing the rainfall data for the specified station.
-
-If we dig under the hood a bit, we can see that there are two main pieces of information:
-
-- `station_info`: a dictionary containing information about the station, such as its name and location.
-- `annual_data`: a dictionary mapping years to `AnnualRainfallData` objects, each containing the date and precipitation data for a given year.
-
 ### Plotting the Data
 
-We can plot the data for one or all of the years to verify that it looks correct.
+We now can plot the data for all the years we have data for. 
 
 ```{julia}
 plot(rainfall_data) # <1>
 ```
 
-1. This `plot` function is defined in [viz.jl](./RainwaterHarvesting/src/viz.jl) and is a thin wrapper around the Plots.jl package.
-
 ### Discussion
 
-*Insert discussion here*
+The years kept after data cleaning are 1980 through 2024. With more than 40 years of data, I believe we have enough information to make risk assessments at a relatively high confidence level just due to the shear amount of data we have. However, although we do have plenty of data we should still be cautious because of the changing climate where rainfall patterns may change drastically in the future. Still, we do have enough data to extract a meaningful risk assessment but we must also be aware of other factors at play. For example, the Great Drought of 1877 occurred in this region of Northeastern Brazil and was the worst drought in Brazilian history displacing thousands of residents. The fact that significant droughts like this one are missing from our data because they fall outside of our time range implies that we can't tell the whole story and this region may be more susceptible to severe droughts than our data would have us believe. Once again, we have enough data to extract meaning from yet we still must practice caution. 
 
 ## Understanding the Theoretical Model
 
-Let's explore the model that simulates the rainwater harvesting system.
+While the model used to model the volume of water in the tank at any day in a given year is a great tool to see when the system would have failed in the past, there are several limiting assumptions and approximations inherent in the model. First, the precipitation value is extracted from the data collected at a specific location but since we would be trying to implement this somewhere else (not the exact place where the collector was located) the result may be different since even within jurisdictions as small as towns or neighborhoods rainfall can vary from place to place for a variety of reasons. An example of a factor that may cause rainfall to differ within a small area is tree coverage. If we are trying to harvest rainwater at a house where there is a lot of tree coverage or more tree coverage than where the data was being collected the precipitation value assumed through the model will be incorrect. Another factor limiting the effectiveness of the model is the fact that we are calculating the inflow based on the surface area of the roof while we should be calculating it based on the largest horizontal cross section of the roof (the area of the cross section of the bottom of the roof) since this is what the rainfall will be distributed across. We can modify the model to account for these inconsistencies by changing the Roof Area parameter from the surface area to two components accounting for what I have mentioned. The first component will simply be the area of the bottom cross section of the roof and we will subtract from that the second component which will be area of tree coverage above the roof. To make it more clear, from a raindrop's perspective as it approaches the roof we can imagine the horizontal area the roof covers as our first component and the horizontal area any trees above the roof cover as the second component. Put together, our inflow equation looks something like:
 
-### Mass Balance Equation
-
-The mass balance model for the rainwater tank is given by:
-
-$$
-V_{t+1} = V_t + Q_t - C_t | 0 \leq V_t \leq V_\text{max}
-$$
-
-- $V_t$: the volume of water in the tank at time $t$
-- $Q_t$ is the volume of water added to the tank at time $t$
-- $C_t$ is the volume of water consumed at time $t$
-- $V_\text{max}$: the maximum volume of the tank
-
-### Inflow ($Q_t$)
-
-Inflow is calculated as
-
-$$
-Q_t = \eta \times A \times \max(P_t - F, 0).
-$$
-
-- $\eta$: the runoff coefficient, which accounts for losses due to evaporation, spilling, etc.
-- $A$: the area of the roof (we will use square meters)
-- $P_t$: the precipitation at time $t$ (we will use millimeters per day)
-- $F$: the first flush volume (we will use millimeters). The first flush volume is often discarded, so that each time it rains the first bit of water (which is usually dirty) is not used (see [here](https://rainwaterharvesting.tamu.edu/pre-storage-treatment/) for more details).
-
-### Consumption
-
-Consumption is modeled as:
-
-$$
-C_t = \begin{cases}
-    74.1 & \quad \text{day of year} > 150 \\
-    0 & \quad \text{day of year} \leq 150
-\end{cases}
-$$
-
-This makes two major assumptiuons.
-First, the household begins using water from the tank after the 150th day of the year.
-This is based on the idea that the rainy season lasts for about the first 150 days of the year, and so they may have other sources of water before then.
-The second assumption is that each household consumes 74.1 liters per day during the dry season.
-How does this compare to your household's water usage?
+Q=runoff coefficient*(horizontal area of roof minus horizontal area of trees)*max(P-f,0)    
 
 ## Model Implementation and Testing
 
 ### Defining the Model Parameters
 
-We can define the model parameters with sensible default values.
-You will have the opportunity to change these values later.
+First we run the model with the default parameters.
 
 ```{julia}
 #| output: false
@@ -116,11 +55,13 @@ param = ModelParameters(          # <1>
 )
 ```
 
-1. This creates a `ModelParameters` object with the specified parameters.
-2. The runoff coefficient ($\eta$) is a measure of how much of the rain that falls on the roof ends up in the tank.
-3. The roof area ($A$) is the area of the roof that the rain falls on.
-4. The first flush volume ($V_f$) is the volume of rain that is discarded because it is dirty.
-5. The tank capacity ($V_\text{max}$) is the maximum volume of the tank.
+The runoff coefficient is a measure of how much of the rain that falls on the roof ends up in the tank.
+
+The roof area is the area of the roof that the rain falls on.
+
+The first flush volume is the volume of rain that is discarded because it is dirty.
+
+The tank capacity is the maximum volume of the tank.
 
 ### Running the Simulation for One Year
 
@@ -132,10 +73,6 @@ results_1981 = run_timesteps(rainfall_1981, param) # <2>
 p1 = plot(results_1981)                                 # <3>
 ```
 
-1. We select the annual rainfall data for the year 1981.
-2. We run the simulation for the year 1981.
-3. We plot the results, again using a `plot` function defined in [viz.jl](./RainwaterHarvesting/src/viz.jl).
-
 To compare rainfall and tank volume:
 
 ```{julia}
@@ -143,13 +80,7 @@ p2 = plot(rainfall_1981)
 plot(p2, p1, layout=(2, 1), size=(1000, 700), link=:x)
 ```
 
-Observe how the tank's water level responds to rainfall events.
-Note any periods when the tank runs dry or overflows.
-
-### Reliability Analysis
-
-We can run simulations for all years, one at a time, and then check how many times the tank runs dry.
-You can run simulations for all years at once with the following code:
+We can run simulations for all years and then check how many times the tank runs dry.
 
 ```{julia}
 all_years = sort(collect(keys(rainfall_data.annual_data)))          # <1>
@@ -158,7 +89,41 @@ any_failures = [!isempty(result.failure_dates) for result in all_results]  # <3>
 println("Number of years with failures: ", sum(any_failures), " out of ", length(all_years))  # <4>
 ```
 
-1. We get all the years in order.
-2. We run the simulation for each year.
-3. We check if any failures occurred.
-4. We print the number of years with failures and the total number of years.
+Now we run the model again but I increased the tank capacity from 16000 L to 20000 L.
+I chose to change the tank capacity because I feel like that is a factor we can easily control in real life and having a bigger tank can have a real impact on lessening the number of years of failure we have since we can better maximize the amount of water we take in during the wet season. 
+
+```{julia}
+#| output: false
+param = ModelParameters(          # <1>
+    runoff_coefficient=0.85,      # <2>
+    roof_area_m2=45.0,            # <3>
+    first_flush_mm=2.0,           # <4>
+    tank_capacity_L=20000.0       # <5>
+)
+```
+
+Let's run the model again with the new parameters for the same year 1981.
+
+```{julia}
+rainfall_1981 = rainfall_data.annual_data[1981]    # <1>
+results_1981 = run_timesteps(rainfall_1981, param) # <2>
+p1 = plot(results_1981)                                 # <3>
+```
+
+```{julia}
+p2 = plot(rainfall_1981)
+plot(p2, p1, layout=(2, 1), size=(1000, 700), link=:x)
+```
+
+```{julia}
+all_years = sort(collect(keys(rainfall_data.annual_data)))          # <1>
+all_results = [run_timesteps(rainfall_data.annual_data[year], param) for year in all_years]   # <2>
+any_failures = [!isempty(result.failure_dates) for result in all_results]  # <3>
+println("Number of years with failures: ", sum(any_failures), " out of ", length(all_years))  # <4>
+```
+
+### Reliability Analysis
+
+The changes I made by increasing the size of the tank led to less failures (8 failures versus 10 failures) My 20,000 L system failed to meet demand 8 out of 36 years meaning it has a reliability percentage of 78% because the system didn't fail 78% of the time. By increasing the volume of the tanks, I decreased the number of failures but it only made a difference in two years. We could attempt to further increase the volume of the tank or increase the size of the roof in order to further decrease the number of failures. However, no matter how big we make our tank and roof, the ultimate deciding factor is the amount of rain in the year. There will be some years where there is simply not a sufficient amount of rain to satisfy our needs no matter how we design our system. 
+
+One limitation of the model is the assumption that we will find water from other sources during the first 150 days of the year. We cannot always rely on a steady water source even during the wet season because there may be some other factors preventing us from getting water from traditional sources and it is quite possible that during some years we would have to tap into the tank earlier than 150 days in. One way to address this gap is to make an alternative C for the first 150 days where instead of C being equal to zero it is equal to some value greater than zero but not quite to the level of 74 L/day which it is at during the dry season. This way, we can have two plots. One represents the normal conditions where we don't have to tap into the tank during the wet season and the other represents the alternative situation where we do have to take water from the tank earlier than 150 days in.
